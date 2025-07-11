@@ -33,6 +33,13 @@ impl Lit {
             value: v.is_positive(),
         })
     }
+
+    pub fn neg(&self) -> Lit {
+        Lit {
+            index: self.index,
+            value: !self.value,
+        }
+    }
 }
 
 impl fmt::Debug for Lit {
@@ -76,6 +83,36 @@ impl Formula {
 
         self.formula.push(clause);
     }
+
+    pub fn is_unit(&self, clause_index: usize) -> Option<bool> {
+        self.formula
+            .get(clause_index)
+            .map(|clause| clause.len() == 1)
+    }
+
+    pub fn unit_clauses(&self) -> Vec<usize> {
+        self.formula
+            .iter()
+            .enumerate()
+            .filter_map(|(i, clause)| if clause.len() == 1 { Some(i) } else { None })
+            .collect()
+    }
+
+    pub fn propogate_literal(&mut self, literal: Lit) {
+        // Remove clauses containing the literal
+        self.formula = self
+            .formula
+            .drain(..)
+            .filter(|clause| !clause.contains(&literal))
+            .collect();
+
+        // Remove the negation of the literal from clauses
+        self.formula = self
+            .formula
+            .drain(..)
+            .map(|clause| clause.into_iter().filter(|l| *l != literal.neg()).collect())
+            .collect();
+    }
 }
 
 impl<Clauses, Item> From<Clauses> for Formula
@@ -107,7 +144,63 @@ impl fmt::Debug for Formula {
                 write!(f, "{:?}", lit)?;
             }
         }
+
         Ok(())
+    }
+}
+
+struct Assignment {
+    index: u32,
+    value: bool,
+}
+
+impl fmt::Debug for Assignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {}",
+            self.index + 1,
+            if self.value { "true" } else { "false" }
+        )
+    }
+}
+
+struct Solver {
+    formula: Formula,
+}
+
+impl Solver {
+    pub fn new(formula: Formula) -> Solver {
+        Solver { formula }
+    }
+
+    pub fn formula(&self) -> Formula {
+        self.formula.clone()
+    }
+
+    pub fn solve(&mut self) -> Option<Vec<Assignment>> {
+        let mut assignments = Vec::new();
+
+        // Unit propogation
+        while let Some(unit_index) = self.formula.unit_clauses().get(0) {
+            let unit_lit = self
+                .formula
+                .formula
+                .get(*unit_index)
+                .unwrap()
+                .get(0)
+                .unwrap()
+                .clone();
+
+            assignments.push(Assignment {
+                index: unit_lit.index,
+                value: unit_lit.value,
+            });
+
+            self.formula.propogate_literal(unit_lit);
+        }
+
+        Some(assignments)
     }
 }
 
@@ -115,7 +208,14 @@ fn main() {
     let mut f = Formula::new();
 
     f.add_clause(&[-1, 2, 3]);
-    f.add_clause(&[2, -3]);
+    f.add_clause(&[2, -3, 1]);
+    f.add_clause(&[1]);
 
-    println!("{:?}", f);
+    let mut solver = Solver::new(f);
+
+    println!("Before:\n{:?}\n", solver.formula());
+    let assignment = solver.solve();
+    println!("After:\n{:?}", solver.formula());
+
+    println!("{:?}", assignment);
 }
