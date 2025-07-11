@@ -49,7 +49,7 @@ impl Lit {
 impl fmt::Debug for Lit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.value {
-            write!(f, "+{}", self.index + 1)
+            write!(f, " {}", self.index + 1)
         } else {
             write!(f, "-{}", self.index + 1)
         }
@@ -267,37 +267,75 @@ impl Solver {
         let var = *self.formula.variables.iter().last().expect("empty formula");
 
         let mut l_solver = Solver::new(self.formula.clone());
-        l_solver.formula.propogate_literal(Lit::from_index_value(var, true));
+        l_solver
+            .formula
+            .propogate_literal(Lit::from_index_value(var, true));
 
         if let Some(mut l_assign) = l_solver.solve() {
-            assignments.push(Assignment { index: var, value: true });
+            assignments.push(Assignment {
+                index: var,
+                value: true,
+            });
             assignments.append(&mut l_assign);
             return Some(assignments);
         }
 
         let mut r_solver = Solver::new(self.formula.clone());
-        r_solver.formula.propogate_literal(Lit::from_index_value(var, true));
+        r_solver
+            .formula
+            .propogate_literal(Lit::from_index_value(var, true));
 
         if let Some(mut r_assign) = r_solver.solve() {
-            assignments.push(Assignment { index: var, value: false });
+            assignments.push(Assignment {
+                index: var,
+                value: false,
+            });
             assignments.append(&mut r_assign);
             return Some(assignments);
         }
 
-        return None
+        return None;
     }
 }
 
 fn main() {
     let mut f = Formula::new();
 
-    f.add_clause(&[1, 2, 3]);
-    f.add_clause(&[-1, -2]);
-    f.add_clause(&[-2, -3]);
+    // Each pigeon must be in at least one hole:
+    f.add_clause(&[1, 2, 3]); // Pigeon 1
+    f.add_clause(&[4, 5, 6]); // Pigeon 2
+    f.add_clause(&[7, 8, 9]); // Pigeon 3
 
+    // Each pigeon must be in at most one hole:
+    // Pigeon 1
+    f.add_clause(&[-1, -2]);
+    f.add_clause(&[-1, -3]);
+    f.add_clause(&[-2, -3]);
+    // Pigeon 2
+    f.add_clause(&[-4, -5]);
+    f.add_clause(&[-4, -6]);
+    f.add_clause(&[-5, -6]);
+    // Pigeon 3
+    f.add_clause(&[-7, -8]);
+    f.add_clause(&[-7, -9]);
+    f.add_clause(&[-8, -9]);
+
+    // No two pigeons can be in the same hole:
+    // Hole 1
+    f.add_clause(&[-1, -4]);
+    f.add_clause(&[-1, -7]);
+    f.add_clause(&[-4, -7]);
+    // Hole 2
+    f.add_clause(&[-2, -5]);
+    f.add_clause(&[-2, -8]);
+    f.add_clause(&[-5, -8]);
+    // Hole 3
+    f.add_clause(&[-3, -6]);
+    f.add_clause(&[-3, -9]);
+    f.add_clause(&[-6, -9]);
     let mut solver = Solver::new(f);
 
-    println!("Before:\n{:?}\n", solver.formula());
+    println!("Formula:\n{:?}\n", solver.formula());
     let assignment = solver.solve();
 
     println!("\nSatisfying Assignment: {:?}", assignment);
