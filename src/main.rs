@@ -256,15 +256,35 @@ impl Solver {
 
         // Stopping conditions
         if self.formula.formula.is_empty() {
-            return Some(assignments)
+            return Some(assignments);
         }
 
         if self.formula.formula.contains(&Vec::new()) {
-            return None
+            return None;
         }
 
-        todo!("Recursion not implemented")
+        // Branch
+        let var = *self.formula.variables.iter().last().expect("empty formula");
 
+        let mut l_solver = Solver::new(self.formula.clone());
+        l_solver.formula.propogate_literal(Lit::from_index_value(var, true));
+
+        if let Some(mut l_assign) = l_solver.solve() {
+            assignments.push(Assignment { index: var, value: true });
+            assignments.append(&mut l_assign);
+            return Some(assignments);
+        }
+
+        let mut r_solver = Solver::new(self.formula.clone());
+        r_solver.formula.propogate_literal(Lit::from_index_value(var, true));
+
+        if let Some(mut r_assign) = r_solver.solve() {
+            assignments.push(Assignment { index: var, value: false });
+            assignments.append(&mut r_assign);
+            return Some(assignments);
+        }
+
+        return None
     }
 }
 
@@ -272,13 +292,13 @@ fn main() {
     let mut f = Formula::new();
 
     f.add_clause(&[1, 2, 3]);
-    f.add_clause(&[2, -3, 1]);
+    f.add_clause(&[-1, -2]);
+    f.add_clause(&[-2, -3]);
 
     let mut solver = Solver::new(f);
 
     println!("Before:\n{:?}\n", solver.formula());
     let assignment = solver.solve();
-    println!("\nAfter:\n{:?}", solver.formula());
 
-    println!("Satisfying Assignment: {:?}", assignment);
+    println!("\nSatisfying Assignment: {:?}", assignment);
 }
