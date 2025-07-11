@@ -8,7 +8,7 @@
 
 #![warn(missing_docs)]
 
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 /// A literal with an index and sign.
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
@@ -34,6 +34,10 @@ impl Lit {
         })
     }
 
+    pub fn from_index_value(index: u32, value: bool) -> Lit {
+        Lit { index, value }
+    }
+
     pub fn neg(&self) -> Lit {
         Lit {
             index: self.index,
@@ -45,7 +49,7 @@ impl Lit {
 impl fmt::Debug for Lit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.value {
-            write!(f, " {}", self.index + 1)
+            write!(f, "+{}", self.index + 1)
         } else {
             write!(f, "-{}", self.index + 1)
         }
@@ -64,6 +68,7 @@ impl TryFrom<i64> for Lit {
 #[derive(Clone, Default, Eq, PartialEq)]
 struct Formula {
     formula: Vec<Vec<Lit>>,
+    variables: HashSet<u32>,
 }
 
 impl Formula {
@@ -81,13 +86,26 @@ impl Formula {
             .filter_map(|&item| Lit::try_from(item).ok())
             .collect();
 
+        for lit in &clause {
+            self.variables.insert(lit.index);
+        }
+
         self.formula.push(clause);
     }
 
-    pub fn is_unit(&self, clause_index: usize) -> Option<bool> {
-        self.formula
-            .get(clause_index)
-            .map(|clause| clause.len() == 1)
+    pub fn update_variable_list(&mut self) {
+        for variable in &self.variables.clone() {
+            let occurences: Vec<&Lit> = self
+                .formula
+                .iter()
+                .flatten()
+                .filter(|l| l.index == *variable)
+                .collect();
+
+            if occurences.is_empty() {
+                self.variables.remove(variable);
+            }
+        }
     }
 
     pub fn unit_clauses(&self) -> Vec<usize> {
@@ -96,6 +114,28 @@ impl Formula {
             .enumerate()
             .filter_map(|(i, clause)| if clause.len() == 1 { Some(i) } else { None })
             .collect()
+    }
+
+    pub fn pure_literals(&self) -> Vec<Lit> {
+        let mut pure_literals: Vec<Lit> = Vec::new();
+
+        for variable in &self.variables {
+            let occurences: Vec<&Lit> = self
+                .formula
+                .iter()
+                .flatten()
+                .filter(|l| l.index == *variable)
+                .collect();
+
+            let is_pure = !(occurences.contains(&&Lit::from_index_value(*variable, true))
+                && occurences.contains(&&Lit::from_index_value(*variable, false)));
+
+            if is_pure {
+                pure_literals.push(**occurences.get(0).expect("variable has no occurrences"));
+            }
+        }
+
+        pure_literals
     }
 
     pub fn propogate_literal(&mut self, literal: Lit) {
@@ -112,6 +152,8 @@ impl Formula {
             .drain(..)
             .map(|clause| clause.into_iter().filter(|l| *l != literal.neg()).collect())
             .collect();
+
+        self.update_variable_list();
     }
 }
 
@@ -197,25 +239,46 @@ impl Solver {
                 value: unit_lit.value,
             });
 
+            println!("Propogating Literal: {:?}", unit_lit);
             self.formula.propogate_literal(unit_lit);
         }
 
-        Some(assignments)
+        // Pure literal elimination
+        while let Some(pure_literal) = self.formula.pure_literals().get(0) {
+            assignments.push(Assignment {
+                index: pure_literal.index,
+                value: pure_literal.value,
+            });
+
+            println!("Eliminating Pure Literal: {:?}", pure_literal);
+            self.formula.propogate_literal(*pure_literal);
+        }
+
+        // Stopping conditions
+        if self.formula.formula.is_empty() {
+            return Some(assignments)
+        }
+
+        if self.formula.formula.contains(&Vec::new()) {
+            return None
+        }
+
+        todo!("Recursion not implemented")
+
     }
 }
 
 fn main() {
     let mut f = Formula::new();
 
-    f.add_clause(&[-1, 2, 3]);
+    f.add_clause(&[1, 2, 3]);
     f.add_clause(&[2, -3, 1]);
-    f.add_clause(&[1]);
 
     let mut solver = Solver::new(f);
 
     println!("Before:\n{:?}\n", solver.formula());
     let assignment = solver.solve();
-    println!("After:\n{:?}", solver.formula());
+    println!("\nAfter:\n{:?}", solver.formula());
 
-    println!("{:?}", assignment);
+    println!("Satisfying Assignment: {:?}", assignment);
 }
