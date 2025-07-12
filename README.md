@@ -23,3 +23,12 @@ let mut solver = Solver::new(f);
 let solution = solver.solve();
 ```
 The `solve()` function returns an option containing `None` if there is no satisfying assignment, or `Some(Vec<Assignment>)` containing a possible satisfying assignment if one exists.
+
+## Features
+- [x] Basic DPLL solving
+- [ ] Better errors
+  - [x] Use `thiserror`
+  - [ ] Switch `From`s to `TryFrom`s
+- [ ] 2WL for clauses
+- [ ] Treat clauses as subsets of larger literal array (as in varisat)
+- [ ] CDCL
