@@ -7,22 +7,22 @@ A CNF formula has a number of clauses containing literals, where each clause is 
 We use the standard notation of numbers to represent each literal, with `-x` being the complement of some variable `x`.
 
 ## Usage
-Create a formula:
+Create a formula and add clauses:
 ```rust
 let mut f = Formula::new();
+
+f.add_clause([1, 2].into());
+f.add_clause([3, 4].into());
+f.add_clause([-1, -2].into());
+f.add_clause([-3, -4].into());
+f.add_clause([-1, -3].into());
+f.add_clause([-2, -4].into());
 ```
-Add clauses:
+Try and find a solution to the formula:
 ```rust
-f.add_clause(&[-1, -2]);
-f.add_clause(&[-1, -3]);
-f.add_clause(&[-2, -3]);
+let solution = f.solve();
 ```
-Give the formula to a solver and solve:
-```rust
-let mut solver = Solver::new(f);
-let solution = solver.solve();
-```
-The `solve()` function returns an option containing `None` if there is no satisfying assignment, or `Some(Vec<Assignment>)` containing a possible satisfying assignment if one exists.
+The `solve()` function returns an option containing `None` if there is no satisfying assignment, or a `Some(HashMap<Var, bool>)` containing a possible satisfying assignment if one exists.
 
 ## Features
 - [x] Basic DPLL solving

@@ -16,6 +16,8 @@ fn main() {
     f.add_clause([-1, -3].into()); // hole 1
     f.add_clause([-2, -4].into()); // hole 2
 
+    let f = f;
+
     let solution = f.solve();
     println!("{:?}", solution);
 
