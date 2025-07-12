@@ -81,12 +81,10 @@ impl Clause {
 
         for lit in &self.literals {
             match assignments.get(&lit.var()) {
-                Some(&assignment) => {
-                    match assignment == lit.polarity() {
-                        true => return Some(true),
-                        false => continue,
-                    }
-                }
+                Some(&assignment) => match assignment == lit.polarity() {
+                    true => return Some(true),
+                    false => continue,
+                },
 
                 None => decided = false,
             }
@@ -162,11 +160,17 @@ impl Formula {
     }
 
     /// Attempts to evaluate the formula using the given assignments.
-    pub fn evaluate(&self, assignments: &Assignments) -> Option<bool> {
+    pub fn evaluate(&self, assignments: &Vec<(Var, bool)>) -> Option<bool> {
+        let mut assignments_hm = HashMap::new();
+
+        for assignment in assignments {
+            assignments_hm.insert(assignment.0, assignment.1);
+        }
+        
         let mut decided = true;
 
         for clause in &self.clauses {
-            match clause.evaluate(assignments) {
+            match clause.evaluate(&assignments_hm) {
                 Some(true) => continue,
                 Some(false) => return Some(false),
                 None => decided = false,
@@ -180,24 +184,48 @@ impl Formula {
         }
     }
 
-    /// Attempts to find a satisfying set of assignments for this formula.
-    pub fn solve(&self) -> Option<Assignments> {
+    /// Attempts to find a satisfying set of assignments for this formula. Variables not in the returned solution are unassigned and can take any value.
+    pub fn solve(&self) -> Option<Vec<(Var, bool)>> {
         // We clone this so solve does not have to mutate this formula
-        self.clone().attempt_solve(HashMap::new())
+        if let Some(solution) = self.clone().attempt_solve(HashMap::new()) {
+            let mut vec_solution = Vec::new();
+
+            for k in solution.keys() {
+                vec_solution.push((*k, *solution.get(k).unwrap()));
+            }
+
+            vec_solution.sort_by_key(|(var, _)| var.index());
+
+            return Some(vec_solution);
+        }
+
+        None
     }
 
     /// Continues a DPLL solve using known assignments and an assumed value.
     fn attempt_solve(&mut self, mut assignments: Assignments) -> Option<Assignments> {
-        // Unit propogation
-        while let Some(unit_lit) = self.find_unit(&assignments) {
-            assignments.insert(unit_lit.var(), unit_lit.polarity());
-            self.propogate_literal(unit_lit);
-        }
+        loop {
+            let mut changed = false;
 
-        // Pure literal elimination
-        while let Some(pure_lit) = self.pure_literals().get(0) {
-            assignments.insert(pure_lit.var(), pure_lit.polarity());
-            self.propogate_literal(*pure_lit);
+            // Unit Propagation
+            if let Some(unit_lit) = self.find_unit(&assignments) {
+                assignments.insert(unit_lit.var(), unit_lit.polarity());
+                self.propogate_literal(&unit_lit);
+                changed = true;
+            }
+
+            // Pure Literal Elimination
+            if let Some(pure_lit) = self.pure_literals().first() {
+                if !assignments.contains_key(&pure_lit.var()) {
+                    assignments.insert(pure_lit.var(), pure_lit.polarity());
+                    self.propogate_literal(pure_lit);
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
+            }
         }
 
         // Stopping conditions
@@ -208,21 +236,21 @@ impl Formula {
         }
 
         // Assume and recurse
-        let var = self.variables.iter().next().unwrap().clone();
+        let branch_var = self.variables.iter().next().copied().unwrap();
 
-        assignments.insert(var, true);
+        for branch in [true, false] {
+            let mut f = self.clone();
+            let mut a = assignments.clone();
 
-        if let Some(assignment) = self.attempt_solve(assignments.clone()) {
-            return Some(assignment);
+            a.insert(branch_var, branch);
+            f.propogate_literal(&Lit::from_var(&branch_var, branch));
+
+            if let Some(solution) = f.attempt_solve(a) {
+                return Some(solution);
+            }
         }
 
-        assignments.insert(var, false);
-
-        if let Some(assignment) = self.attempt_solve(assignments) {
-            return Some(assignment);
-        }
-
-        return None;
+        None
     }
 
     /// Tries to find a unit clause and literal based on the given assignments.
@@ -257,7 +285,7 @@ impl Formula {
     }
 
     /// Propogates a literal, removing clauses that contain it and removing it from clauses that contain its complement.
-    fn propogate_literal(&mut self, lit: Lit) {
+    fn propogate_literal(&mut self, lit: &Lit) {
         self.clauses = self
             .clauses
             .drain(..)
@@ -265,7 +293,7 @@ impl Formula {
             .collect();
 
         for clause in &mut self.clauses {
-            clause.remove_literal(!lit);
+            clause.remove_literal(lit.complement());
         }
 
         self.variables.remove(&lit.var());
