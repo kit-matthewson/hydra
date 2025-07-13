@@ -210,6 +210,10 @@ impl fmt::Debug for Lit {
 /// Uses Debug output
 impl fmt::Display for Lit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        if self.is_positive() {
+            write!(f, " {:?}", self)
+        } else {
+            write!(f, "{:?}", self)
+        }
     }
 }

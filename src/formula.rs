@@ -1,11 +1,15 @@
 //! Clauses and Formulas
 
+use core::panic;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
+    ops::Range,
 };
 
-use crate::{Lit, Var};
+use rand::prelude::*;
+
+use crate::{errors::LitError, Lit, Var};
 
 type Assignments = HashMap<Var, bool>;
 
@@ -20,6 +24,31 @@ impl Clause {
     /// Creates a new clause containing no literals.
     pub fn new() -> Clause {
         Clause::default()
+    }
+
+    /// Generates a random clause of `n` literals.
+    pub fn random(n: usize, index_range: Range<usize>) -> Result<Clause, LitError> {
+        if n > index_range.clone().len() {
+            panic!("n > range");
+        }
+        
+        let mut rng = rand::rng();
+        let mut clause = Clause::new();
+
+        for _ in 0..n {
+            loop {
+                let lit =
+                    Lit::from_index(rng.random_range(index_range.clone()), rng.random_bool(0.5))?;
+
+                if !clause.contains_literal(&lit) && !clause.contains_literal(&lit.complement()) {
+                    clause.add_literal(lit);
+                    break;
+                } else {
+                }
+            }
+        }
+
+        Ok(clause)
     }
 
     /// Returns a cloned copy of the literals in this clause.
@@ -159,6 +188,11 @@ impl Formula {
         self.clauses.push(clause);
     }
 
+    /// Gets the clauses in this formula.
+    pub fn clauses(&self) -> &Vec<Clause> {
+        &self.clauses
+    }
+
     /// Attempts to evaluate the formula using the given assignments.
     pub fn evaluate(&self, assignments: &Vec<(Var, bool)>) -> Option<bool> {
         let mut assignments_hm = HashMap::new();
@@ -166,7 +200,7 @@ impl Formula {
         for assignment in assignments {
             assignments_hm.insert(assignment.0, assignment.1);
         }
-        
+
         let mut decided = true;
 
         for clause in &self.clauses {

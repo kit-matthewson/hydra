@@ -1,4 +1,4 @@
-# HYDA
+# Hyda
 
 Hydra is a DPLL SAT solver written in Rust.
 

@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thiserror = "2.0.12"
+rand = "0.9"
+thiserror = "2.0"
+varisat = "0.2.2"
+
+# [features]
+# rand = ["deb:rand"]

@@ -1,23 +1,37 @@
+use core::panic;
+
 #[allow(unused_imports)]
 use hydra;
 
+use varisat::{ExtendFormula, Solver};
+
 fn main() {
-    let mut f = hydra::Formula::new();
+    for i in 0..100 {
+        let mut f = hydra::Formula::new();
+        let mut vf = Solver::new();
 
-    f.add_clause([1, 2].into());
-    f.add_clause([3, 4].into());
-    f.add_clause([-1, -2].into());
-    f.add_clause([-3, -4].into());
-    f.add_clause([-1, -3].into());
-    f.add_clause([-2, -4].into());
+        loop {
+            let clause = hydra::Clause::random(3, 0..9).unwrap();
+            f.add_clause(clause.clone());
 
-    let f = f;
+            let mut vc = Vec::new();
+            for lit in clause.literals() {
+                vc.push(varisat::Lit::from_dimacs(lit.to_dimacs()));
+            }
+            vf.add_clause(&vc);
 
-    let solution = f.solve();
+            let sat = f.solve().is_some();
+            let vsat = vf.solve().unwrap();
 
-    if let Some(solution) = solution {
-        println!("{:?} ={:?}", solution, f.evaluate(&solution).unwrap_or(false));
-    } else {
-        println!("unsat")
+            if sat != vsat {
+                println!("{} - {}", sat, vsat);
+                panic!("disagreement");
+            }
+
+            if !sat {
+                println!("run {}: {} clauses", i, f.clauses().len());
+                break;
+            }
+        }
     }
 }
