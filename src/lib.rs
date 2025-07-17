@@ -9,6 +9,8 @@
 pub mod errors;
 mod formula;
 mod literals;
+mod solver;
 
 pub use formula::*;
 pub use literals::*;
+pub use solver::*;

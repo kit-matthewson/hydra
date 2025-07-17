@@ -1,17 +1,26 @@
-use core::panic;
-
-#[allow(unused_imports)]
 use hydra;
+use varisat::ExtendFormula;
 
-use varisat::{ExtendFormula, Solver};
+// fn main() {
+//     let mut formula = hydra::Formula::new();
 
+//     formula.add_clause([2, 4, -1].into());
+//     formula.add_clause([-2, 1, -3].into());
+
+//     let solution = hydra::solve(&formula);
+//     println!("{:?}\n\n{:?}", formula.clauses(), solution);
+// }
 fn main() {
-    for i in 0..100 {
-        let mut f = hydra::Formula::new();
-        let mut vf = Solver::new();
+    // TODO verify that assignments are the same / valid
+    let mut i = 0;
 
+    loop {
+        let mut f = hydra::Formula::new();
+        let mut vf = varisat::Solver::new();
+
+        // Add random clauses until unsat
         loop {
-            let clause = hydra::Clause::random(3, 0..9).unwrap();
+            let clause = hydra::Clause::random(5, 0..9).unwrap();
             f.add_clause(clause.clone());
 
             let mut vc = Vec::new();
@@ -20,12 +29,19 @@ fn main() {
             }
             vf.add_clause(&vc);
 
-            let sat = f.solve().is_some();
-            let vsat = vf.solve().unwrap();
+            let solution = hydra::solve(&f);
+            let sat = solution.is_some();
+
+            let _ = vf.solve();
+            let vsolution = vf.model();
+            let vsat = vsolution.is_some();
+
+            if sat && vsat {
+                println!("{} = {:?} or {:?}", clause, &solution.clone().unwrap().vec(), vsolution);
+            }
 
             if sat != vsat {
-                println!("{} - {}", sat, vsat);
-                panic!("disagreement");
+                panic!("disagreement: hydra {}, varisat {}", sat, vsat);
             }
 
             if !sat {
@@ -33,5 +49,7 @@ fn main() {
                 break;
             }
         }
+
+        i += 1;
     }
 }

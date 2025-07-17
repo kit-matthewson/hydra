@@ -20,15 +20,22 @@ f.add_clause([-2, -4].into());
 ```
 Try and find a solution to the formula:
 ```rust
-let solution = f.solve();
+let solution: Option<Assignment> = solve(f);
 ```
-The `solve()` function returns an option containing `None` if there is no satisfying assignment, or a `Some(HashMap<Var, bool>)` containing a possible satisfying assignment if one exists.
+The `solve()` function returns an option containing `None` if there is no satisfying assignment, or a `Some(Assignment)` containing a possible satisfying assignment if one exists.
 
-## Features
-- [x] Basic DPLL solving
-- [ ] Better errors
+## TODO
+To consider:
+- Whether to return `unsat` when assign is called to change an already set variable.
+
+To do list:
+- [x] DPLL Solving
+  - [x] Identify unit clauses
+  - [x] Identify pure literals
+  - [x] Unit propogation
+- [ ] Error handling
   - [x] Use `thiserror`
-  - [ ] Switch `From`s to `TryFrom`s
-- [ ] 2WL for clauses
-- [ ] Treat clauses as subsets of larger literal array (as in varisat)
-- [ ] CDCL
+- [ ] DPLL Optimisations
+  - [x] Watched literals
+  - [ ] Avoid cloning context
+  - [ ] Store unit literals

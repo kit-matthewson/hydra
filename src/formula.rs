@@ -1,17 +1,74 @@
 //! Clauses and Formulas
 
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-    ops::Range,
-};
+use std::{collections::HashMap, fmt, ops::Range};
 
 use rand::prelude::*;
 
 use crate::{errors::LitError, Lit, Var};
 
-type Assignments = HashMap<Var, bool>;
+#[derive(Debug, Default, Clone)]
+pub struct Assignment {
+    assignemnts: HashMap<Var, bool>,
+}
+
+impl Assignment {
+    /// Creates a new, empty, assignment.
+    pub fn new() -> Assignment {
+        Assignment::default()
+    }
+
+    /// Returns `true` if the provided variable exists in this assignment.
+    pub fn contains(&self, var: &Var) -> bool {
+        self.assignemnts.contains_key(var)
+    }
+
+    /// Gets the value assigned to `var` if it has an assignment, otherwise returns `None`.
+    pub fn get(&self, var: &Var) -> Option<bool> {
+        self.assignemnts.get(var).copied()
+    }
+
+    /// Sets the value of `var` to `value` in this assignment.
+    ///
+    /// Returns `true` if the variable was already set.
+    pub fn set(&mut self, var: Var, value: bool) -> bool {
+        self.assignemnts.insert(var, value).is_some()
+    }
+
+    /// Assigns the unerlying variable of `lit` to `lit.polarity()`.
+    ///
+    /// Returns `true` if the variable was already set.
+    pub fn set_lit(&mut self, lit: &Lit) -> bool {
+        self.set(lit.var(), lit.polarity())
+    }
+
+    /// Evaluate a literal based on this assignement, if one exists for the underlying variable.
+    pub fn evaluate(&self, lit: &Lit) -> Option<bool> {
+        if let Some(assignment) = self.get(&lit.var()) {
+            return Some(assignment == lit.polarity());
+        }
+
+        return None;
+    }
+
+    /// Returns this assignment as a vector of assignment pairs, sorted by variable index.
+    pub fn vec(&self) -> Vec<(Var, bool)> {
+        let mut vec = Vec::new();
+
+        for (var, value) in self.assignemnts.iter() {
+            vec.push((*var, *value));
+        }
+
+        vec.sort_by_key(|(var, _)| var.index());
+
+        vec
+    }
+
+    /// Get a hashmap of variable assignments.
+    pub fn hashmap(&self) -> HashMap<Var, bool> {
+        self.assignemnts.clone()
+    }
+}
 
 /// A CNF clause. That is, a disjunction of literals that themselves can be the complement of a variable.
 #[derive(Clone, Default)]
@@ -31,7 +88,7 @@ impl Clause {
         if n > index_range.clone().len() {
             panic!("n > range");
         }
-        
+
         let mut rng = rand::rng();
         let mut clause = Clause::new();
 
@@ -43,7 +100,6 @@ impl Clause {
                 if !clause.contains_literal(&lit) && !clause.contains_literal(&lit.complement()) {
                     clause.add_literal(lit);
                     break;
-                } else {
                 }
             }
         }
@@ -88,11 +144,11 @@ impl Clause {
     /// Checks if this clause is a unit clause (contains exactly one unassigned literal), based on the provided assignments.
     ///
     /// If it is a unit clause, returns the unit literal, otherwise returns `None`.
-    pub fn is_unit(&self, assignments: &Assignments) -> Option<Lit> {
+    pub fn is_unit(&self, assignment: &Assignment) -> Option<Lit> {
         let unassigned: Vec<&Lit> = self
             .literals
             .iter()
-            .filter(|lit| assignments.contains_key(&lit.var()))
+            .filter(|lit| assignment.contains(&lit.var()))
             .collect();
 
         if unassigned.len() == 1 {
@@ -105,12 +161,12 @@ impl Clause {
     /// Attempts to evaluate this clause.
     ///
     /// Returns `None` if evaluation is not possible.
-    pub fn evaluate(&self, assignments: &Assignments) -> Option<bool> {
+    pub fn evaluate(&self, assignments: &Assignment) -> Option<bool> {
         let mut decided = true;
 
         for lit in &self.literals {
-            match assignments.get(&lit.var()) {
-                Some(&assignment) => match assignment == lit.polarity() {
+            match assignments.evaluate(&lit) {
+                Some(value) => match value {
                     true => return Some(true),
                     false => continue,
                 },
@@ -170,7 +226,6 @@ impl fmt::Display for Clause {
 #[derive(Default, Clone)]
 pub struct Formula {
     clauses: Vec<Clause>,
-    variables: HashSet<Var>,
 }
 
 impl Formula {
@@ -181,10 +236,6 @@ impl Formula {
 
     /// Adds a clause to this formula.
     pub fn add_clause(&mut self, clause: Clause) {
-        for lit in &clause.literals {
-            self.variables.insert(lit.var());
-        }
-
         self.clauses.push(clause);
     }
 
@@ -194,17 +245,11 @@ impl Formula {
     }
 
     /// Attempts to evaluate the formula using the given assignments.
-    pub fn evaluate(&self, assignments: &Vec<(Var, bool)>) -> Option<bool> {
-        let mut assignments_hm = HashMap::new();
-
-        for assignment in assignments {
-            assignments_hm.insert(assignment.0, assignment.1);
-        }
-
+    pub fn evaluate(&self, assignments: &Assignment) -> Option<bool> {
         let mut decided = true;
 
         for clause in &self.clauses {
-            match clause.evaluate(&assignments_hm) {
+            match clause.evaluate(assignments) {
                 Some(true) => continue,
                 Some(false) => return Some(false),
                 None => decided = false,
@@ -217,119 +262,24 @@ impl Formula {
             None
         }
     }
+}
 
-    /// Attempts to find a satisfying set of assignments for this formula. Variables not in the returned solution are unassigned and can take any value.
-    pub fn solve(&self) -> Option<Vec<(Var, bool)>> {
-        // We clone this so solve does not have to mutate this formula
-        if let Some(solution) = self.clone().attempt_solve(HashMap::new()) {
-            let mut vec_solution = Vec::new();
-
-            for k in solution.keys() {
-                vec_solution.push((*k, *solution.get(k).unwrap()));
-            }
-
-            vec_solution.sort_by_key(|(var, _)| var.index());
-
-            return Some(vec_solution);
+impl fmt::Debug for Formula {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for clause in self.clauses() {
+            writeln!(f, "{:?}", clause)?
         }
 
-        None
+        Ok(())
     }
+}
 
-    /// Continues a DPLL solve using known assignments and an assumed value.
-    fn attempt_solve(&mut self, mut assignments: Assignments) -> Option<Assignments> {
-        loop {
-            let mut changed = false;
-
-            // Unit Propagation
-            if let Some(unit_lit) = self.find_unit(&assignments) {
-                assignments.insert(unit_lit.var(), unit_lit.polarity());
-                self.propogate_literal(&unit_lit);
-                changed = true;
-            }
-
-            // Pure Literal Elimination
-            if let Some(pure_lit) = self.pure_literals().first() {
-                if !assignments.contains_key(&pure_lit.var()) {
-                    assignments.insert(pure_lit.var(), pure_lit.polarity());
-                    self.propogate_literal(pure_lit);
-                    changed = true;
-                }
-            }
-
-            if !changed {
-                break;
-            }
+impl fmt::Display for Formula {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for clause in self.clauses() {
+            writeln!(f, "{}", clause)?
         }
 
-        // Stopping conditions
-        if self.clauses.is_empty() {
-            return Some(assignments);
-        } else if self.clauses.iter().any(|clause| clause.is_empty()) {
-            return None;
-        }
-
-        // Assume and recurse
-        let branch_var = self.variables.iter().next().copied().unwrap();
-
-        for branch in [true, false] {
-            let mut f = self.clone();
-            let mut a = assignments.clone();
-
-            a.insert(branch_var, branch);
-            f.propogate_literal(&Lit::from_var(&branch_var, branch));
-
-            if let Some(solution) = f.attempt_solve(a) {
-                return Some(solution);
-            }
-        }
-
-        None
-    }
-
-    /// Tries to find a unit clause and literal based on the given assignments.
-    fn find_unit(&self, assignments: &Assignments) -> Option<Lit> {
-        for clause in &self.clauses {
-            if let Some(unit_lit) = clause.is_unit(assignments) {
-                return Some(unit_lit);
-            }
-        }
-
-        None
-    }
-
-    /// Finds all pure literals (literals that appear with exactly one polarity in all clauses).
-    fn pure_literals(&self) -> Vec<Lit> {
-        let literals: Vec<Lit> = self
-            .clauses
-            .iter()
-            .map(|clause| clause.literals())
-            .flatten()
-            .collect();
-
-        let mut pure = Vec::new();
-
-        for lit in &literals {
-            if !literals.contains(&lit.complement()) && !pure.contains(lit) {
-                pure.push(*lit)
-            }
-        }
-
-        pure
-    }
-
-    /// Propogates a literal, removing clauses that contain it and removing it from clauses that contain its complement.
-    fn propogate_literal(&mut self, lit: &Lit) {
-        self.clauses = self
-            .clauses
-            .drain(..)
-            .filter(|clause| !clause.contains_literal(&lit))
-            .collect();
-
-        for clause in &mut self.clauses {
-            clause.remove_literal(lit.complement());
-        }
-
-        self.variables.remove(&lit.var());
+        Ok(())
     }
 }

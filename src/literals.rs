@@ -172,6 +172,11 @@ impl Lit {
         !self.polarity()
     }
 
+    /// What this literal evaluates to with the given variable assignment.
+    pub fn evaluate(&self, value: bool) -> bool {
+        self.polarity() == value
+    }
+
     /// The complement of this literal.
     pub fn complement(&self) -> Lit {
         !*self
