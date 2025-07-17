@@ -64,6 +64,11 @@ impl Assignment {
         vec
     }
 
+    /// Returns this assignement as a vector of literals.
+    pub fn lits(&self) -> Vec<Lit> {
+        self.vec().iter().map(|(var, value)| Lit::from_var(var, *value)).collect()
+    }
+
     /// Get a hashmap of variable assignments.
     pub fn hashmap(&self) -> HashMap<Var, bool> {
         self.assignemnts.clone()
@@ -206,7 +211,7 @@ impl fmt::Debug for Clause {
             "{}",
             self.literals
                 .iter()
-                .fold(String::new(), |acc, lit| format!("{} {:?}", acc, lit))
+                .rfold(String::new(), |acc, lit| format!("{:?} {}", lit, acc))
         )
     }
 }
@@ -218,7 +223,7 @@ impl fmt::Display for Clause {
             "{}",
             self.literals
                 .iter()
-                .fold(String::new(), |acc, lit| format!("{} {}", acc, lit))
+                .rfold(String::new(), |acc, lit| format!("{:?} {}", lit, acc))
         )
     }
 }

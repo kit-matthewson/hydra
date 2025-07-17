@@ -35,6 +35,7 @@ To do list:
   - [x] Unit propogation
 - [ ] Error handling
   - [x] Use `thiserror`
+  - [ ] Tests
 - [ ] DPLL Optimisations
   - [x] Watched literals
   - [ ] Avoid cloning context
