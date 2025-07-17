@@ -1,13 +1,6 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::{Assignment, Formula, Lit, Var};
-
-#[derive(Debug, Clone)]
-enum LitPolarities {
-    TrueOnly,
-    FalseOnly,
-    Both,
-}
 
 #[derive(Debug, Clone)]
 enum ClauseState {
@@ -25,43 +18,30 @@ struct Context<'a> {
     /// The current assignment we are working with
     assignment: Assignment,
     /// A set of variables in the formula.
-    unassigned_variables: HashMap<Var, LitPolarities>,
+    unassigned_variables: HashSet<Var>,
     /// States of the clauses in the formula, indexed in the same order
     clause_states: Vec<ClauseState>,
-    // /// A (arbritrary) clause that is not complete
-    // watched_clause: Option<usize>,
+    /// All known unit literals in the formula
+    unit_lits: Vec<Lit>,
 }
 
 impl<'a> Context<'a> {
     pub fn new(formula: &Formula) -> Context {
-        let mut unassigned_variables = HashMap::new();
+        let mut unassigned_variables = HashSet::new();
         let mut clause_states = Vec::new();
+        let mut unit_lits = Vec::new();
 
         for clause in formula.clauses() {
             for lit in clause.literals() {
-                if let Some(polarities) = unassigned_variables.get(&lit.var()) {
-                    if match polarities {
-                        LitPolarities::TrueOnly => lit.is_negative(),
-                        LitPolarities::FalseOnly => lit.is_positive(),
-                        LitPolarities::Both => true,
-                    } {
-                        unassigned_variables.insert(lit.var(), LitPolarities::Both);
-                    }
-                } else {
-                    unassigned_variables.insert(
-                        lit.var(),
-                        if lit.polarity() {
-                            LitPolarities::TrueOnly
-                        } else {
-                            LitPolarities::FalseOnly
-                        },
-                    );
-                }
+                unassigned_variables.insert(lit.var());
             }
 
             let state = match clause.literals().as_slice() {
                 [] => ClauseState::Complete(false),
-                [a] => ClauseState::Unit(*a),
+                [a] => {
+                    unit_lits.push(*a);
+                    ClauseState::Unit(*a)
+                }
                 [a, b, ..] => ClauseState::Watching(*a, *b),
             };
 
@@ -72,13 +52,14 @@ impl<'a> Context<'a> {
             formula,
             assignment: Assignment::default(),
             unassigned_variables,
+            unit_lits,
             clause_states,
         }
     }
 
     /// Assigns a variable.
     ///
-    /// Returns true if the assignment makes a clause unsat.
+    /// Returns `true` if a conflict is found.
     #[must_use]
     pub fn assign(&mut self, var: &Var, value: bool) -> bool {
         self.assignment.set(*var, value);
@@ -132,12 +113,16 @@ impl<'a> Context<'a> {
                         debug_assert_ne!(new_lit.var(), unassigned_lit.var());
                         *state = ClauseState::Watching(unassigned_lit, new_lit);
                     } else {
+                        self.unit_lits.push(unassigned_lit);
                         *state = ClauseState::Unit(unassigned_lit);
                     }
                 }
 
                 ClauseState::Unit(lit) => {
                     if lit.var() == *var {
+                        // Remove the lit from unit lit list
+                        self.unit_lits = self.unit_lits.drain(..).filter(|l| *l != *lit).collect();
+
                         if lit.evaluate(value) {
                             *state = ClauseState::Complete(true);
                         } else {
@@ -159,6 +144,8 @@ impl<'a> Context<'a> {
     }
 
     /// Shortcut for `assign(lit.var(), lit.polarity())`.
+    ///
+    /// Returns `true` if a conflict is found.
     #[must_use]
     pub fn assign_lit(&mut self, lit: &Lit) -> bool {
         self.assign(&lit.var(), lit.polarity())
@@ -166,33 +153,26 @@ impl<'a> Context<'a> {
 
     /// Gets a unit literal if one exists.
     pub fn get_unit_lit(&self) -> Option<Lit> {
-        self.clause_states
-            .iter()
-            .filter_map(|state| {
-                if let ClauseState::Unit(lit) = state {
-                    Some(*lit)
-                } else {
-                    None
-                }
-            })
-            .next()
-    }
-
-    /// Gets a pure literal if one exists.
-    pub fn get_pure_lit(&self) -> Option<Lit> {
-        self.unassigned_variables
-            .iter()
-            .filter_map(|(var, polarities)| match polarities {
-                LitPolarities::TrueOnly => Some(var.positive()),
-                LitPolarities::FalseOnly => Some(var.negative()),
-                LitPolarities::Both => None,
-            })
-            .next()
+        self.unit_lits.get(0).copied()
     }
 
     /// Tries to get an unassigned variable.
     pub fn get_unassigned_var(&self) -> Option<Var> {
-        self.unassigned_variables.keys().next().copied()
+        self.unassigned_variables.iter().next().copied()
+    }
+
+    /// Returns `true` if the formula is satisfied with this context, otherwise `false`.
+    pub fn is_satisfied(&self) -> bool {
+        let mut all_true = true;
+
+        for state in &self.clause_states {
+            if !matches!(state, ClauseState::Complete(true)) {
+                all_true = false;
+                break;
+            }
+        }
+
+        all_true
     }
 }
 
@@ -202,51 +182,25 @@ pub fn solve(formula: &Formula) -> Option<Assignment> {
         return None;
     }
 
-    attempt_solve(Context::new(formula))
+    let solution = attempt_solve(Context::new(formula));
+
+    if let Some(solution) = &solution {
+        if solution.hashmap().is_empty() {
+            return None;
+        }
+    }
+
+    solution
 }
 
 /// Continues a DPLL solve using known assignments and an assumed value.
 fn attempt_solve(mut ctx: Context) -> Option<Assignment> {
-    loop {
-        let mut changed = false;
+    if bcp(&mut ctx) {
+        return None;
+    }
 
-        // Unit Propagation
-        if let Some(unit_lit) = ctx.get_unit_lit() {
-            if ctx.assign_lit(&unit_lit) {
-                return None;
-            }
-
-            changed = true;
-        }
-
-        // Pure Literal Elimination
-        if let Some(pure_lit) = ctx.get_pure_lit() {
-            if ctx.assign_lit(&pure_lit) {
-                return None;
-            }
-
-            changed = true;
-        }
-
-        if !changed {
-            break;
-        }
-
-        let mut all_true = true;
-        for state in &ctx.clause_states {
-            if matches!(state, ClauseState::Complete(false)) {
-                unreachable!("this should have been caught earlier")
-            }
-
-            if !matches!(state, ClauseState::Complete(true)) {
-                all_true = false;
-                break;
-            }
-        }
-
-        if all_true {
-            return Some(ctx.assignment);
-        }
+    if ctx.is_satisfied() {
+        return Some(ctx.assignment);
     }
 
     // Assume and recurse
@@ -263,19 +217,7 @@ fn attempt_solve(mut ctx: Context) -> Option<Assignment> {
             continue;
         }
 
-        let mut all_true = true;
-        for state in &ctx.clause_states {
-            if matches!(state, ClauseState::Complete(false)) {
-                unreachable!("this should have been caught earlier")
-            }
-
-            if !matches!(state, ClauseState::Complete(true)) {
-                all_true = false;
-                break;
-            }
-        }
-
-        if all_true {
+        if ctx.is_satisfied() {
             return Some(ctx.assignment);
         }
 
@@ -285,4 +227,14 @@ fn attempt_solve(mut ctx: Context) -> Option<Assignment> {
     }
 
     None
+}
+
+fn bcp(ctx: &mut Context) -> bool {
+    while let Some(unit_lit) = ctx.get_unit_lit() {
+        if ctx.assign_lit(&unit_lit) {
+            return true;
+        }
+    }
+
+    false
 }
